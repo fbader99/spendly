@@ -3,7 +3,13 @@ import sqlite3
 from flask import Flask, abort, flash, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash
 
-from database.db import CATEGORIES, create_user, get_db, get_user_by_email, init_db, seed_db
+from database.db import create_user, get_user_by_email, init_db, seed_db
+from database.queries import (
+    get_category_breakdown,
+    get_recent_transactions,
+    get_summary_stats,
+    get_user_by_id,
+)
 
 app = Flask(__name__)
 app.secret_key = "dev-secret-key-change-me"  # dev only; needed for flash()
@@ -110,47 +116,16 @@ def profile():
     if not session.get("user_id"):
         return redirect(url_for("login"))
 
-    # Placeholder data for the page design. The next step replaces these
-    # hardcoded values with real queries; the shapes stay the same.
-    user = {
-        "name": session["user_name"],
-        "email": "demo@spendly.com",
-        "member_since": "November 2026",
-    }
+    user_id = session["user_id"]
+    user = get_user_by_id(user_id)
+    if user is None:
+        # Stale session: the user no longer exists (e.g. the DB was reset).
+        session.clear()
+        return redirect(url_for("login"))
 
-    expenses = [
-        {"date": "2026-11-01", "description": "Groceries for the week", "category": "Food", "amount": 450.0},
-        {"date": "2026-11-03", "description": "Auto rickshaw to office", "category": "Transport", "amount": 120.0},
-        {"date": "2026-11-05", "description": "Electricity bill", "category": "Bills", "amount": 2200.0},
-        {"date": "2026-11-07", "description": "Pharmacy - vitamins", "category": "Health", "amount": 650.0},
-        {"date": "2026-11-08", "description": "Movie tickets", "category": "Entertainment", "amount": 499.0},
-        {"date": "2026-11-10", "description": "New running shoes", "category": "Shopping", "amount": 1599.0},
-        {"date": "2026-11-12", "description": "Gift wrapping", "category": "Other", "amount": 300.0},
-        {"date": "2026-11-14", "description": "Dinner with friends", "category": "Food", "amount": 280.0},
-    ]
-    expenses = sorted(expenses, key=lambda e: e["date"], reverse=True)
-
-    # Derive the summary from the expenses so the numbers always agree.
-    total_spent = sum(e["amount"] for e in expenses)
-    totals = {name: 0.0 for name in CATEGORIES}
-    for e in expenses:
-        totals[e["category"]] += e["amount"]
-
-    categories = sorted(
-        (
-            {"name": name, "total": total, "percent": round(total / total_spent * 100)}
-            for name, total in totals.items()
-            if total > 0
-        ),
-        key=lambda c: c["total"],
-        reverse=True,
-    )
-
-    stats = {
-        "total_spent": total_spent,
-        "transaction_count": len(expenses),
-        "top_category": categories[0]["name"] if categories else None,
-    }
+    expenses = get_recent_transactions(user_id)
+    stats = get_summary_stats(user_id)
+    categories = get_category_breakdown(user_id)
 
     return render_template(
         "profile.html",
