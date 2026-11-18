@@ -47,11 +47,11 @@
                     <li class="profile-cat-row">
                         <div class="profile-cat-head">
                             <span class="profile-cat-name">{{ c.name }}</span>
-                            <span class="profile-cat-amount">₹{{ "{:,.2f}".format(c.total) }}</span>
+                            <span class="profile-cat-amount">₹{{ "{:,.2f}".format(c.amount) }}</span>
                         </div>
                         <div class="profile-bar-track">
                             <div class="profile-bar profile-cat--{{ c.name|lower }}"
-                                 style="width: {{ c.percent }}%"></div>
+                                 style="width: {{ c.pct }}%"></div>
                         </div>
                     </li>
                     {% endfor %}
