@@ -1,4 +1,6 @@
+import calendar
 import sqlite3
+from datetime import date, datetime
 
 from flask import Flask, abort, flash, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash
@@ -17,6 +19,47 @@ app.secret_key = "dev-secret-key-change-me"  # dev only; needed for flash()
 with app.app_context():
     init_db()
     seed_db()
+
+
+# ------------------------------------------------------------------ #
+# Date filter helpers                                                 #
+# ------------------------------------------------------------------ #
+
+def _parse_iso_date(value):
+    """Return a date for a YYYY-MM-DD string, or None if missing or malformed."""
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _months_ago(d, n):
+    """Return the same day n months before d, clamped to that month's last day."""
+    month_index = d.year * 12 + (d.month - 1) - n
+    year, month = divmod(month_index, 12)
+    month += 1
+    day = min(d.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
+
+
+def _date_presets(today):
+    """Return the quick-select filter presets as ISO-string date ranges."""
+    def preset(key, label, start):
+        return {
+            "key": key,
+            "label": label,
+            "date_from": start.isoformat() if start else None,
+            "date_to": today.isoformat() if start else None,
+        }
+
+    return [
+        preset("this-month", "This Month", today.replace(day=1)),
+        preset("last-3-months", "Last 3 Months", _months_ago(today, 3)),
+        preset("last-6-months", "Last 6 Months", _months_ago(today, 6)),
+        preset("all-time", "All Time", None),
+    ]
 
 
 # ------------------------------------------------------------------ #
@@ -123,9 +166,28 @@ def profile():
         session.clear()
         return redirect(url_for("login"))
 
-    expenses = get_recent_transactions(user_id)
-    stats = get_summary_stats(user_id)
-    categories = get_category_breakdown(user_id)
+    # Date filter: both bounds must be valid, otherwise show all time.
+    start = _parse_iso_date(request.args.get("date_from"))
+    end = _parse_iso_date(request.args.get("date_to"))
+    if start is None or end is None:
+        start = end = None
+    elif start > end:
+        flash("Start date must be before end date.", "error")
+        start = end = None
+
+    date_from = start.isoformat() if start else None
+    date_to = end.isoformat() if end else None
+
+    presets = _date_presets(date.today())
+    active_filter = next(
+        (p["key"] for p in presets
+         if p["date_from"] == date_from and p["date_to"] == date_to),
+        "custom",
+    )
+
+    expenses = get_recent_transactions(user_id, date_from=date_from, date_to=date_to)
+    stats = get_summary_stats(user_id, date_from=date_from, date_to=date_to)
+    categories = get_category_breakdown(user_id, date_from=date_from, date_to=date_to)
 
     return render_template(
         "profile.html",
@@ -133,6 +195,10 @@ def profile():
         stats=stats,
         categories=categories,
         expenses=expenses,
+        presets=presets,
+        active_filter=active_filter,
+        date_from=date_from,
+        date_to=date_to,
     )
 
 
