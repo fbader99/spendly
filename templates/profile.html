@@ -11,6 +11,12 @@
 <section class="profile-section">
     <div class="profile-container">
 
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+        <div class="auth-{{ category }} profile-flash" role="alert">{{ message }}</div>
+        {% endfor %}
+        {% endwith %}
+
         <div class="profile-card profile-header">
             <div class="profile-avatar" aria-hidden="true">
                 {%- for word in user.name.split()[:2] %}{{ word[0]|upper }}{% endfor -%}
@@ -20,6 +26,29 @@
                 <p class="profile-email">{{ user.email }}</p>
                 <p class="profile-meta">Member since {{ user.member_since }}</p>
             </div>
+        </div>
+
+        <div class="profile-card profile-filter">
+            <nav class="profile-filter-presets" aria-label="Date range presets">
+                {% for p in presets %}
+                <a href="{{ url_for('profile', date_from=p.date_from, date_to=p.date_to) }}"
+                   class="profile-filter-btn{% if p.key == active_filter %} profile-filter-btn--active{% endif %}"
+                   {% if p.key == active_filter %}aria-current="true"{% endif %}>{{ p.label }}</a>
+                {% endfor %}
+            </nav>
+
+            <form method="get" action="{{ url_for('profile') }}"
+                  class="profile-filter-form{% if active_filter == 'custom' %} profile-filter-form--active{% endif %}">
+                <label class="profile-filter-field">
+                    <span>From</span>
+                    <input type="date" name="date_from" value="{{ date_from or '' }}" required>
+                </label>
+                <label class="profile-filter-field">
+                    <span>To</span>
+                    <input type="date" name="date_to" value="{{ date_to or '' }}" required>
+                </label>
+                <button type="submit" class="profile-filter-apply">Apply</button>
+            </form>
         </div>
 
         <div class="profile-stats">
