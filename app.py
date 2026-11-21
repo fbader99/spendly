@@ -1,16 +1,19 @@
 import calendar
+import math
 import sqlite3
 from datetime import date, datetime
+from functools import wraps
 
 from flask import Flask, abort, flash, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash
 
-from database.db import create_user, get_user_by_email, init_db, seed_db
+from database.db import CATEGORIES, create_user, get_user_by_email, init_db, seed_db
 from database.queries import (
     get_category_breakdown,
     get_recent_transactions,
     get_summary_stats,
     get_user_by_id,
+    insert_expense,
 )
 
 app = Flask(__name__)
@@ -60,6 +63,20 @@ def _date_presets(today):
         preset("last-6-months", "Last 6 Months", _months_ago(today, 6)),
         preset("all-time", "All Time", None),
     ]
+
+
+# ------------------------------------------------------------------ #
+# Auth helpers                                                        #
+# ------------------------------------------------------------------ #
+
+def login_required(view):
+    """Redirect to the login page unless a user is signed in."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not session.get("user_id"):
+            return redirect(url_for("login"))
+        return view(*args, **kwargs)
+    return wrapped
 
 
 # ------------------------------------------------------------------ #
@@ -155,10 +172,8 @@ def logout():
 
 
 @app.route("/profile")
+@login_required
 def profile():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
-
     user_id = session["user_id"]
     user = get_user_by_id(user_id)
     if user is None:
@@ -203,15 +218,95 @@ def profile():
 
 
 @app.route("/analytics")
+@login_required
 def analytics():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
     return render_template("analytics.html")
 
 
-@app.route("/expenses/add")
+MAX_AMOUNT = 10_000_000  # ₹1,00,00,000
+MAX_DESCRIPTION_LENGTH = 200
+
+
+def _parse_amount(value):
+    """Return a positive amount rounded to 2 places, or None if invalid or out of range."""
+    try:
+        amount = float(value)
+    except ValueError:
+        return None
+    if not math.isfinite(amount) or not 0 < amount <= MAX_AMOUNT:
+        return None
+    return round(amount, 2)
+
+
+def _validate_expense_form(form):
+    """Return (values, cleaned, error) for a submitted expense form.
+
+    values holds the stripped strings to refill the form. cleaned holds the
+    parsed amount, category, ISO date and description ready to save; it is
+    None when error (the first validation message) is set.
+    """
+    values = {
+        "amount": form.get("amount", "").strip(),
+        "category": form.get("category", "").strip(),
+        "date": form.get("date", "").strip(),
+        "description": form.get("description", "").strip(),
+    }
+
+    amount = _parse_amount(values["amount"])
+    if amount is None:
+        return values, None, "Amount must be a number between 0 and ₹1,00,00,000."
+
+    if values["category"] not in CATEGORIES:
+        return values, None, "Please choose a valid category."
+
+    expense_date = _parse_iso_date(values["date"])
+    if expense_date is None:
+        return values, None, "Please enter a valid date."
+
+    if len(values["description"]) > MAX_DESCRIPTION_LENGTH:
+        return values, None, (
+            f"Description must be {MAX_DESCRIPTION_LENGTH} characters or fewer."
+        )
+
+    cleaned = {
+        "amount": amount,
+        "category": values["category"],
+        "date": expense_date.isoformat(),  # normalised, e.g. 2026-3-5 -> 2026-03-05
+        "description": values["description"] or None,
+    }
+    return values, cleaned, None
+
+
+def _render_expense_form(form):
+    """Render the add-expense form, refilled with the given field values."""
+    return render_template(
+        "add_expense.html",
+        categories=CATEGORIES,
+        form=form,
+        max_description_length=MAX_DESCRIPTION_LENGTH,
+    )
+
+
+@app.route("/expenses/add", methods=["GET", "POST"])
+@login_required
 def add_expense():
-    return "Add expense — coming in Step 7"
+    if request.method == "GET":
+        return _render_expense_form({"date": date.today().isoformat()})
+
+    values, cleaned, error = _validate_expense_form(request.form)
+    if error:
+        flash(error, "error")
+        return _render_expense_form(values)
+
+    insert_expense(
+        session["user_id"],
+        cleaned["amount"],
+        cleaned["category"],
+        cleaned["date"],
+        cleaned["description"],
+    )
+    flash("Expense added.", "success")
+    return redirect(url_for("profile"))
 
 
 @app.route("/expenses/<int:id>/edit")
