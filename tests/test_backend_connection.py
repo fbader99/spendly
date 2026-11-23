@@ -58,7 +58,7 @@ def test_get_recent_transactions_demo_user(demo_user_id):
     assert len(txns) == 8
     for t in txns:
         assert isinstance(t, dict)
-        assert set(t) == {"date", "description", "category", "amount"}
+        assert set(t) == {"id", "date", "description", "category", "amount"}
     dates = [t["date"] for t in txns]
     assert dates == sorted(dates, reverse=True)
     assert sum(t["amount"] for t in txns) == SEED_TOTAL

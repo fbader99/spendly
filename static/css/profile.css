@@ -318,6 +318,19 @@
 
 .profile-table td.profile-num { color: var(--ink); font-weight: 500; }
 
+.profile-table .profile-actions {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.profile-edit-link {
+    color: var(--accent);
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.profile-edit-link:hover { text-decoration: underline; }
+
 .profile-date {
     white-space: nowrap;
     color: var(--ink-muted);

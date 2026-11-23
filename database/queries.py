@@ -41,14 +41,14 @@ def _date_clause(date_from, date_to):
 def get_recent_transactions(user_id, limit=10, date_from=None, date_to=None):
     """Return up to `limit` of this user's expenses, newest first.
 
-    Each item is {"date", "description", "category", "amount"}; [] if none.
+    Each item is {"id", "date", "description", "category", "amount"}; [] if none.
     Optionally restricted to date_from..date_to (inclusive, YYYY-MM-DD).
     """
     clause, range_params = _date_clause(date_from, date_to)
     conn = get_db()
     try:
         rows = conn.execute(
-            "SELECT date, description, category, amount FROM expenses "
+            "SELECT id, date, description, category, amount FROM expenses "
             "WHERE user_id = ?" + clause + " ORDER BY date DESC, id DESC LIMIT ?",
             (user_id, *range_params, limit),
         ).fetchall()
@@ -57,6 +57,7 @@ def get_recent_transactions(user_id, limit=10, date_from=None, date_to=None):
 
     return [
         {
+            "id": row["id"],
             "date": row["date"],
             "description": row["description"],
             "category": row["category"],
@@ -97,6 +98,26 @@ def get_summary_stats(user_id, date_from=None, date_to=None):
         "transaction_count": count,
         "top_category": top["category"] if top else "—",
     }
+
+
+# --- single expense ---
+
+def get_expense_by_id(expense_id, user_id):
+    """Return this user's expense as {"id", "amount", "category", "date", "description"}.
+
+    Returns None if the expense doesn't exist or belongs to another user.
+    """
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT id, amount, category, date, description FROM expenses "
+            "WHERE id = ? AND user_id = ?",
+            (expense_id, user_id),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    return dict(row) if row else None
 
 
 # --- category breakdown ---
@@ -148,5 +169,20 @@ def insert_expense(user_id, amount, category, expense_date, description):
         )
         conn.commit()
         return cursor.lastrowid
+    finally:
+        conn.close()
+
+
+def update_expense(expense_id, user_id, amount, category, expense_date, description):
+    """Update one of this user's expenses. Return True if a row was updated."""
+    conn = get_db()
+    try:
+        cursor = conn.execute(
+            "UPDATE expenses SET amount = ?, category = ?, date = ?, description = ? "
+            "WHERE id = ? AND user_id = ?",
+            (amount, category, expense_date, description, expense_id, user_id),
+        )
+        conn.commit()
+        return cursor.rowcount == 1
     finally:
         conn.close()
