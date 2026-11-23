@@ -10,10 +10,12 @@ from werkzeug.security import check_password_hash
 from database.db import CATEGORIES, create_user, get_user_by_email, init_db, seed_db
 from database.queries import (
     get_category_breakdown,
+    get_expense_by_id,
     get_recent_transactions,
     get_summary_stats,
     get_user_by_id,
     insert_expense,
+    update_expense,
 )
 
 app = Flask(__name__)
@@ -277,13 +279,14 @@ def _validate_expense_form(form):
     return values, cleaned, None
 
 
-def _render_expense_form(form):
-    """Render the add-expense form, refilled with the given field values."""
+def _render_expense_form(form, template="add_expense.html", **context):
+    """Render an expense form template, refilled with the given field values."""
     return render_template(
-        "add_expense.html",
+        template,
         categories=CATEGORIES,
         form=form,
         max_description_length=MAX_DESCRIPTION_LENGTH,
+        **context,
     )
 
 
@@ -309,9 +312,38 @@ def add_expense():
     return redirect(url_for("profile"))
 
 
-@app.route("/expenses/<int:id>/edit")
+@app.route("/expenses/<int:id>/edit", methods=["GET", "POST"])
+@login_required
 def edit_expense(id):
-    return "Edit expense — coming in Step 8"
+    # 404 for both missing and other users' expenses, so ids aren't leaked.
+    expense = get_expense_by_id(id, session["user_id"])
+    if expense is None:
+        abort(404)
+
+    if request.method == "GET":
+        form = {
+            "amount": "{:.2f}".format(expense["amount"]),
+            "category": expense["category"],
+            "date": expense["date"],
+            "description": expense["description"] or "",
+        }
+        return _render_expense_form(form, "edit_expense.html", expense_id=id)
+
+    values, cleaned, error = _validate_expense_form(request.form)
+    if error:
+        flash(error, "error")
+        return _render_expense_form(values, "edit_expense.html", expense_id=id)
+
+    update_expense(
+        id,
+        session["user_id"],
+        cleaned["amount"],
+        cleaned["category"],
+        cleaned["date"],
+        cleaned["description"],
+    )
+    flash("Expense updated.", "success")
+    return redirect(url_for("profile"))
 
 
 @app.route("/expenses/<int:id>/delete")
