@@ -301,6 +301,23 @@ a { color: inherit; text-decoration: none; }
     color: var(--ink);
 }
 
+/* Text-style danger button, e.g. Delete in the transactions table */
+.btn-delete {
+    background: none;
+    border: none;
+    padding: 0;
+    margin-left: 0.75rem;
+    font: inherit;
+    font-weight: 500;
+    color: var(--danger);
+    cursor: pointer;
+}
+
+.btn-delete:hover,
+.btn-delete:focus-visible {
+    text-decoration: underline;
+}
+
 /* ------------------------------------------------------------------ */
 /* Features section                                                    */
 /* ------------------------------------------------------------------ */
